@@ -1,7 +1,8 @@
-import math
 import random
 import thorpy
 import pygame
+
+import scenario
 
 
 def clamp(n, min_val, max_val):
@@ -20,9 +21,22 @@ class Qeeg:
         self.immune = False
 
     def infect(self):
+        if self.immune:
+            self.herd.immune.remove(self)
+        else:
+            self.herd.vulnerable.remove(self)
+        self.herd.infected.append(self)
         self.infected = True
         self.immune = False
-        self.infection_timeout = self.herd.recovery_time
+        self.infection_timeout = int(self.herd.recovery_time * self.herd.fps)
+
+    def immunize(self):
+        if self.infected:
+            self.herd.infected.remove(self)
+        self.infected = False
+        self.immune = True
+        self.immunity_timeout = int(self.herd.immunity_time * self.herd.fps)
+        self.herd.immune.append(self)
 
     def update(self):
         pos_x_int = clamp(int(self.pos_x), self.herd.menu_w, self.herd.screen_w - 1)
@@ -38,11 +52,7 @@ class Qeeg:
                         self.herd.infected.remove(self)
                         return
                     else:
-                        self.infected = False
-                        self.immune = True
-                        self.immunity_timeout = self.herd.immunity_time
-                        self.herd.infected.remove(self)
-                        self.herd.immune.append(self)
+                        self.immunize()
 
         if self.immune:
             if self.immunity_timeout != 0:
@@ -52,19 +62,14 @@ class Qeeg:
                     self.herd.immune.remove(self)
                     self.herd.vulnerable.append(self)
 
-        # check if we are on in the infection overlay
+        # check if we are on the infection overlay
         if self.herd.inf_overlay.get_at((pos_x_int, pos_y_int)) == self.herd.inf_overlay_color and not self.infected:
             roll = random.uniform(0, 1)
             min_roll = self.herd.inf_chance
             if self.immune:
                 min_roll = self.herd.inf_chance_imm
             if roll < min_roll:
-                if self.immune:
-                    self.herd.immune.remove(self)
-                else:
-                    self.herd.vulnerable.remove(self)
                 self.infect()
-                self.herd.infected.append(self)
 
         if self.infected:
             pygame.draw.circle(
@@ -94,7 +99,7 @@ class Qeeg:
 class Herd:
     def __init__(self):
         # display
-        self.menu_w = 300
+        self.menu_w = 330
         self.screen_h = 900
         self.screen_w = 1100
         self.fps = 60
@@ -136,11 +141,18 @@ class Herd:
         self.start_imm_slider = thorpy.SliderX(120, (0, 100), "Starting immune %", initial_value=20, type_=int)
         self.restart = thorpy.make_button("Restart", func=self.regen_game)
 
+        self.scenario_title = thorpy.make_text("Black Death", 14)
+        self.scenario_img = thorpy.Image("scen_black_death.png")
+
+        scenario.scenarios[0].apply_preview(self)
+
         self.box = thorpy.Box(size=(self.menu_w, self.screen_h), elements=[
+            thorpy.make_text("Statistics", 20),
             self.stats_pop,
             self.stats_inf,
             self.stats_imm,
             self.stats_ded,
+            thorpy.make_text("Disease & Transmission", 20),
             self.slider_recovery_time,
             self.slider_immunity_time,
             self.slider_inf_range,
@@ -148,11 +160,18 @@ class Herd:
             self.slider_inf_chance_imm,
             self.slider_mov_spd,
             self.slider_fatality_rate,
-            self.pause,
+            thorpy.make_text("Population (restart required)", 20),
             self.start_pop_box,
             self.start_inf_box,
             self.start_imm_slider,
-            self.restart])
+            thorpy.make_text("Controls", 20),
+            self.pause,
+            self.restart,
+            thorpy.make_text("Scenarios", 20),
+            self.scenario_title,
+            self.scenario_img,
+            thorpy.make_button("Next", func=self.cycle_scenario),
+            thorpy.make_button("Apply", func=self.apply_scenario)])
         thorpy.store(self.box, x=10, y=0, align='left')
 
         self.menu = thorpy.Menu(self.box)
@@ -195,15 +214,11 @@ class Herd:
         self.immune = list()
         for i in range(0, self.start_pop):
             q = Qeeg(self)
+            self.vulnerable.append(q)
             if i < self.start_inf:
                 q.infect()
-                self.infected.append(q)
             elif i < self.start_imm + self.start_inf:
-                q.immune = True
-                q.immunity_timeout = self.immunity_time
-                self.immune.append(q)
-            else:
-                self.vulnerable.append(q)
+                q.immunize()
             self.pop.append(q)
         self.screen.fill((0, 0, 0))
         self.inf_overlay.fill((0, 0, 0, 0))
@@ -216,6 +231,15 @@ class Herd:
         self.stats_inf.set_text("Infected: %d" % len(self.infected))
         self.stats_imm.set_text("Immune: %d" % len(self.immune))
         self.stats_ded.set_text("Deaths: %d" % (self.start_pop - len(self.pop)))
+
+    def cycle_scenario(self):
+        scenario.curr_scenario += 1
+        if scenario.curr_scenario == len(scenario.scenarios):
+            scenario.curr_scenario = 0
+        scenario.scenarios[scenario.curr_scenario].apply_preview(self)
+
+    def apply_scenario(self):
+        scenario.scenarios[scenario.curr_scenario].apply(self)
 
     def toggle_pause(self):
         self.sim_running = not self.sim_running
@@ -246,8 +270,8 @@ class Herd:
 
             self.update_stats()
 
-            self.recovery_time = self.slider_recovery_time.get_value() * self.fps
-            self.immunity_time = self.slider_immunity_time.get_value() * self.fps
+            self.recovery_time = self.slider_recovery_time.get_value()
+            self.immunity_time = self.slider_immunity_time.get_value()
             self.inf_range = self.slider_inf_range.get_value()
             self.inf_chance = self.slider_inf_chance.get_value()
             self.inf_chance_imm = self.slider_inf_chance_imm.get_value()

@@ -1,0 +1,8 @@
+scen_black_death.png
+https://commons.wikimedia.org/wiki/File:Paul_F%C3%BCrst,_Der_Doctor_Schnabel_von_Rom_(Holl%C3%A4nder_version).png
+
+scen_common_cold.png
+https://commons.wikimedia.org/wiki/File:Rhinovirus_isosurface.png
+
+scen_herd_immunity.png
+https://commons.wikimedia.org/wiki/File:Herd_immunity.svg
